@@ -193,6 +193,99 @@ circom <FILE_NAME>.circom --r1cs --O0
 >
 > 更进一步, 究竟在数学上怎样证明一个ZKP算法的“完备性”呢? 使用约束可以接近ZKP的完备性, 但是多少约束, 什么样的约束才能让verifier同意“这个ZKP一定是对的”呢?
 
+我理解了! 首先要理解circom和solidity的关系 ([为什么要用circom生成solidity语言而不直接写solidity语言](https://ethereum.stackexchange.com/a/163860/149230)), circom的主要作用是一个给prover在链下从signal inputs开始计算的工具 (signal input-\->circom-\->intermediate signal, signal output), 次要作用是生成一个链上的verifier代码. prover部分的工作计算量很大不可能在链上完成. 比如我要证明我的tx hash在Tornado的Merkle Tree上, 我就需要大量的哈希计算, 这部分是在circom (也就是offline) 完成的, 完成后把proof (所谓proof实际上就是包含所有signal的json) 提交给verifier, 也即solidity代码, solidity在链上验证all signals符合all constrains.
+
+回到这个问题, verifier只看得到prover提交的proof和constrains, 因此如果删掉`in*out === 0;`那prover就可以提交如下proof:
+
+-   in = 1
+-   inv = -1
+-   out = 2
+
+这份proof显然不是用circom计算出来的, 但这并不影响它被提交, 且也能通过constrains, 因此constrains并没有保证该证明的完备性. 至于是否要添加`out*(out-1) === 0;`, 以及它和`in*out === 0;`相比约束力如何, 可能并没有mathematically的判断方法, 可能只能在只看constrains的情况下尝试所有可能的输入确保不会有破坏证明的“合法”输入. 一个经验原则是每添加一个中间信号signal就需要多一个约束.
+
+如何hacking: [Hacking Underconstrained Circom Circuits With Fake Proofs](https://www.rareskills.io/post/underconstrained-circom)
+
+-   对于`mul3.circom`, 先写`input.json`包含所有signal input
+
+    ```json
+    {"a": "1", "b": "1", "c": "5"}
+    ```
+
+    然后运行
+
+    ```
+    circom mul3.circom --r1cs --wasm --sym
+    ```
+
+    生成.rics约束文件, WebAssembly (包含电路的计算逻辑的文件, 用来生成witness), .sym (符号表, 记录电路的信号名称和编号)
+
+    然后运行
+
+    ```
+    cd mul3_js/
+    node generate_witness.js mul3.wasm ../input.json ../witness.wtns
+    cd ..
+    ```
+
+    生成合法的`witness.wtns`, 一个二进制文件
+
+    可以转换为json格式, 并且用.sym对应signal的值
+
+    ```
+    snarkjs wtns export json witness.wtns witness.json
+    ```
+
+    <img src="img_md/image-20250107195008067.png" alt="image-20250107195008067" style="zoom:50%;" />
+
+    验证witness的合法性:
+
+    ```
+    snarkjs wtns check mul3.r1cs witness.wtns
+    ```
+
+-   恶意篡改`.wtns`:
+
+    二进制文件无法被直接编辑, 但我们可以查看[生成`.wtns`的代码](https://github.com/iden3/circom_runtime/blob/master/build/main.cjs#L533)知道它是怎样被编码的, 然后写代码将二进制转换为bytes
+
+    ```js
+    const fs = require('fs');
+    
+    const filePath = 'witness.wtns';
+    
+    const data = fs.readFileSync(filePath);
+    
+    let data_arr = new Uint8Array(data);
+    console.dir(data_arr, {'maxArrayLength': null});
+    ```
+
+    <img src="img_md/image-20250107195416750.png" alt="image-20250107195416750" style="zoom:50%;" />
+
+    找到对应的index (如何找就还得去读生成`.wtns`的源代码), 修改数组内容
+
+    ```js
+    const fs = require('fs');
+    
+    const filePath = 'witness.wtns';
+    
+    const data = fs.readFileSync(filePath);
+    
+    data[108] = 10; // `out`
+    data[236] = 2;  // `i`
+    
+    console.log("After");
+    console.dir(data, {'maxArrayLength': null});
+    
+    fs.writeFileSync('exploit_witness.wtns', data);
+    ```
+
+    <img src="img_md/image-20250107195633188.png" alt="image-20250107195633188" style="zoom:50%;" />
+
+    然后用篡改的`.wtns`通过`.rics`验证:
+
+    ```
+    snarkjs wtns check mul3.r1cs exploit_witness.wtns
+    ```
+
 
 
 > ```js

@@ -1,8 +1,8 @@
 | date       |                                                |
 | ---------- | ---------------------------------------------- |
 | 2024-12-25 | MIT ZKP前两节, 然后看circom, Tornado, R1CS教学 |
-|            |                                                |
-|            |                                                |
+| 2025-1-2   | 完成Tornado作业                                |
+| 2025-1-8   |                                                |
 |            |                                                |
 |            |                                                |
 |            |                                                |
@@ -181,7 +181,7 @@ circom <FILE_NAME>.circom --r1cs --O0
 >   inv <-- in!=0 ? 1/in : 0;
 > 
 >   out <== -in*inv +1;
->   in*out === 0;
+>   /in*out === 0;
 >   
 >   //out*(out-1) === 0;
 > }
@@ -202,6 +202,12 @@ circom <FILE_NAME>.circom --r1cs --O0
 -   out = 2
 
 这份proof显然不是用circom计算出来的, 但这并不影响它被提交, 且也能通过constrains, 因此constrains并没有保证该证明的完备性. 至于是否要添加`out*(out-1) === 0;`, 以及它和`in*out === 0;`相比约束力如何, 可能并没有mathematically的判断方法, 可能只能在只看constrains的情况下尝试所有可能的输入确保不会有破坏证明的“合法”输入. 一个经验原则是每添加一个中间信号signal就需要多一个约束.
+
+对于`out*(out-1) === 0;`, 可以用如下input破坏:
+
+- in = 0
+- inv = 1
+- out = 0
 
 如何hacking: [Hacking Underconstrained Circom Circuits With Fake Proofs](https://www.rareskills.io/post/underconstrained-circom)
 
@@ -237,7 +243,7 @@ circom <FILE_NAME>.circom --r1cs --O0
 
     <img src="img_md/image-20250107195008067.png" alt="image-20250107195008067" style="zoom:50%;" />
 
-    验证witness的合法性:
+    验证witness的与`.r1cs`文件中的约束是一样的:
 
     ```
     snarkjs wtns check mul3.r1cs witness.wtns
@@ -376,8 +382,4 @@ circom <FILE_NAME>.circom --r1cs --O0
 
 
 
-
-
-
-
-> Tornado的平方数?
+> Tornado中的平方数的作用?
